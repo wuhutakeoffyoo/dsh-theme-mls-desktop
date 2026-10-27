@@ -2247,9 +2247,18 @@ var DONE_STORE_KEY = 'mar.done.v1';
       var DONE_STATE = doneLoad();
       function doneEnabled() { return DONE_STATE.on !== false; }
 
-      // 尊重系统「减少动态效果」：整段跳过（这一拍没有静态形态可言，半成品
-      // 比不放更糟）。开关关掉时同样— 零开销"：不订阅、不建节点、不留定时器
+      // [fork-patch] 上游尊重系统「减少动态效果」并整段跳过（这一拍没有静态形态
+      // 可言，半成品比不放更糟）。本 fork 默认改为无视该闸门 —— 本机 Windows
+      // 「动画效果」关闭时任务完成动画曾被静默跳过。想恢复上游行为，在页面
+      // 控制台执行 localStorage.setItem('mar.motion.override', '0')。
+      function marMotionOverride() {
+        try {
+          return !((typeof window !== 'undefined' && window.localStorage) &&
+            window.localStorage.getItem('mar.motion.override') === '0');
+        } catch (e) { return true; }
+      }
 function marDoneReduced() {
+        if (marMotionOverride()) return false;
         return !!(typeof window !== 'undefined' && window.matchMedia &&
           window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       }
@@ -3361,7 +3370,11 @@ var head =
       }
       var BOOT_STATE = bootLoad();
       function bootEnabled() { return BOOT_STATE.on !== false; }
+      // [fork-patch] 同 marDoneReduced：本 fork 默认无视系统「减少动态效果」，
+      // 让冷启动揭幕在本机关了 Windows 动画的情况下也照常播放。
+      // 恢复上游行为：localStorage.setItem('mar.motion.override', '0')。
       function bootReduced() {
+        if (marMotionOverride()) return false;
         return !!(typeof window !== 'undefined' && window.matchMedia &&
           window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       }

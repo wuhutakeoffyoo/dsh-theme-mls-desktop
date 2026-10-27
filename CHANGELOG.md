@@ -5,6 +5,26 @@
 次版本号 = 向后兼容的新功能；
 修订号 = 向后兼容的 bug 修复。
 
+## [0.5.1-fork.1] - 2026-10-27
+
+**自用 fork：默认无视系统「减少动态效果」，让启动 / 任务完成动画在被关掉 Windows 动画的机器上照常播放。**
+
+### 背景
+- 本机（DSH NEXT `dsh-desktop-next` 2.0.19-next，Windows）把系统的「动画效果」关了
+  （`SPI_GETCLIENTAREAANIMATION = FALSE`），Chromium 据此报告 `prefers-reduced-motion: reduce`。
+  上游的 `bootReduced()` / `marDoneReduced()` 两道闸门于是**静默**跳过冷启动揭幕与任务完成动画
+  —— 没有任何日志或提示，主题其余部分一切正常，极难排查。
+
+### 改动
+- 新增 `marMotionOverride()`：读 `localStorage['mar.motion.override']`，只有显式写成 `'0'`
+  才恢复上游行为（重新尊重系统设置）；缺省、以及读到任何其它值时都**无视**系统减少动态偏好。
+- `bootReduced()` / `marDoneReduced()` 先过这道闸：override 生效时直接返回 `false`，
+  冷启动揭幕与任务完成动画照常挂载；设置页「状态小字」的 `'reduced'` 判定随之消失（动画真的会播）。
+- 设置页马赛克揭示的 `reducedMotion()`（纯装饰过渡）保持上游行为不动。
+
+### 卸载补丁
+- 页面控制台执行 `localStorage.setItem('mar.motion.override', '0')` 即恢复上游行为，无需回退代码。
+
 ## [0.5.1] - 2026-10-19
 
 **背景点阵（背景动画）接入主题色，并新增「透明度」旋钮。**
