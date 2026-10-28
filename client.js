@@ -323,7 +323,7 @@ window.__ModuleLoader__.load({
         '   Do not add a colour here without a reason; "just one more shade" is',
         '   how this theme ended up with five near-identical dark greens. */',
         'body.theme-marathon{',
-        '  --mar-accent:#A3D803;',
+        '  --mar-accent:#B2EB04;',
         '  --mar-accent-ink:#0B0D0B;',
         '  /* --mar-solid-ink is the ink for any SOLID fill (the accent, and the',
         '     few tokens that resolve through a solid). It is a constant: unlike',
@@ -371,7 +371,7 @@ window.__ModuleLoader__.load({
         '  --mar-bill-acid:#C0FE04;',
         '  /* the accent at low alpha, for hovering something that is accent-',
         '     selected — a wash, not a second accent face */',
-        '  --mar-wash-accent:rgba(163,216,3,.14);',
+        '  --mar-wash-accent:rgba(178,235,4,.14);',
         '  /* the accent AS TEXT — a different job from --mar-accent-ink, which is',
         '     the ink you put ON an accent fill. On the dark plate the accent reads',
         '     as a letterform just fine (#C0FE04 on the hover wash is 8.4:1). On the',
@@ -381,7 +381,7 @@ window.__ModuleLoader__.load({
         '     "accent text" is the primary ink instead: there, green is a surface',
         '     (a fill, a wash, a notch) and never a letterform. Anything that draws',
         '     the accent as `color` goes through this variable, not --mar-accent. */',
-        '  --mar-accent-text:#A3D803;',
+        '  --mar-accent-text:#B2EB04;',
         '  /* scrims */',
         '  --mar-scrim:rgba(11,13,11,.75);',
         '}',
@@ -1438,7 +1438,7 @@ window.__ModuleLoader__.load({
       //  七个色统一过一道亮度衰减：只乘 RGB，不动色相和饱和度，所以换色不会偏色。
       //  存进 localStorage 的仍是原始色值，色卡的选中比较也仍用原值——衰减只发生在
       //  真正写进 CSS / 画布的那一刻，将来想调回去只改这一个系数。
-      var ACCENT_DIM = 0.85;
+      var ACCENT_DIM = 0.925;
       function accentDim(hex) {
         var c = accentRgb(hex);
         var out = [0, 0, 0];
