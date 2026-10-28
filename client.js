@@ -3517,7 +3517,12 @@ var head =
       var settingsKick = 0;      // rAF handle for the immediate settings sweep
       var settingsPokes = [];    // startup retries aimed at installing the observer
 
+      // [fork-patch] 同 marMotionOverride：本 fork 默认无视系统「减少动态效果」。
+      // 这里除了设置页马赛克揭示，还养着背景点阵的 rAF 循环开关（bgStart 在
+      // reduced-motion 下只画一帧静态点阵，2026-10-28 实测），所以一并放宽。
+      // 恢复上游行为：localStorage.setItem('mar.motion.override', '0')。
       function reducedMotion() {
+        if (marMotionOverride()) return false;
         return !!(typeof window !== 'undefined' && window.matchMedia &&
           window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       }
