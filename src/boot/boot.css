@@ -50,12 +50,6 @@
   --mb-t-blue: 3.06s;       /* blue pixel tile fades in (its own keyframe) */
   --mb-t-blue-rush: 2.88s;  /* ...but its zoom is already running by then */
   --mb-t-blue-dur: 2.85s;   /* blue tile zoom to full screen */
-  /* Whale mark and the English wordmark share one center line, then a fixed
-     gap. The old caption anchor (40% + 105px) drifted into the 45%-centered
-     mark on any tall window — "英文徽标和英文 logo 叠在一起". */
-  --mb-mark-size: 115px;
-  --mb-mark-center: 40%;
-  --mb-mark-gap: 48px;
   position: fixed;
   inset: 0;
   z-index: 2147483000;
@@ -224,31 +218,30 @@ html[data-mar-boot] #root {
  * scale-in this used to carry (plus the delay) read as "the logo now fades in".
  * It keeps a soft lime halo so it stays legible against an arbitrary desktop
  * wallpaper rather than a black plate. */
+/* Whale + English wordmark are one centred stack. A full-width band (not a
+ * shrink-wrapped translateX(-50%) box) so the webfont swap cannot shove the
+ * lockup sideways. align-items keeps the mark and both English lines on the
+ * same centre axis. Gap is small on purpose — 48px read as too far apart. */
+#dshMarBootHost .mb-intro-lockup {
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; z-index: 10;
+}
 #dshMarBootHost .mb-logo-top {
-  position: absolute; top: var(--mb-mark-center); left: 50%;
-  width: var(--mb-mark-size); height: var(--mb-mark-size);
-  transform: translate(-50%, -50%);
-  object-fit: contain; z-index: 10; opacity: 1;
+  position: static; width: 115px; height: 115px;
+  transform: none;
+  object-fit: contain; opacity: 1;
   filter: drop-shadow(0 0 26px rgba(192, 254, 4, .38)) drop-shadow(0 0 4px rgba(0, 0, 0, .55));
 }
-/* 2) the caption, also on screen from the first frame (no animation, matching
- * the standalone's `.caption` rule).
- * Centred as a FULL-WIDTH BAND rather than as a shrink-wrapped box carrying
- * `left:50%; transform:translateX(-50%)`. Measured cause of "the logo text
- * starts offset and then fixes itself": the caption renders with fallback font
- * metrics first (373px wide) and re-lays out when the webfont arrives (266px),
- * which drags the left edge of a translateX(-50%) element sideways by 53px.
- * A band cannot move when its text changes width, which is why the standalone's
- * translateX(-50%) box is not reproduced verbatim here. */
 #dshMarBootHost .mb-caption {
-  position: absolute; left: 0; right: 0;
-  top: calc(var(--mb-mark-center) + (var(--mb-mark-size) / 2) + var(--mb-mark-gap));
-  text-align: center; z-index: 10; color: #C0FD04;
+  position: static; top: auto; left: auto; right: auto;
+  text-align: center; color: #C0FD04;
   text-shadow: 0 0 18px rgba(0, 0, 0, .55);
 }
 #dshMarBootHost .mb-caption .mb-line1 { font-family: 'Maratype', sans-serif; font-size: 44px; letter-spacing: 0; line-height: 1.1; white-space: nowrap; }
-#dshMarBootHost .mb-caption .mb-line2 { margin-top: 22px; font-family: 'Maratype', sans-serif; font-size: 16px;
-  letter-spacing: 10px; line-height: 1.1; white-space: nowrap; }
+#dshMarBootHost .mb-caption .mb-line2 { margin-top: 8px; font-family: 'Maratype', sans-serif; font-size: 16px;
+  letter-spacing: 10px; padding-left: 10px; line-height: 1.1; white-space: nowrap; }
 #dshMarBootHost .mb-logo-bg { position: absolute; top: 50%; left: 50%; width: 140vmin; height: 140vmin;
   transform: translate(-50%, -50%); object-fit: contain; z-index: 1; opacity: 0; }
 /* 3) HUI frames, released one by one from the outside in */
