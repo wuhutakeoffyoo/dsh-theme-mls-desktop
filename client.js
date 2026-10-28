@@ -323,7 +323,7 @@ window.__ModuleLoader__.load({
         '   Do not add a colour here without a reason; "just one more shade" is',
         '   how this theme ended up with five near-identical dark greens. */',
         'body.theme-marathon{',
-        '  --mar-accent:#C0FE04;',
+        '  --mar-accent:#A3D803;',
         '  --mar-accent-ink:#0B0D0B;',
         '  /* --mar-solid-ink is the ink for any SOLID fill (the accent, and the',
         '     few tokens that resolve through a solid). It is a constant: unlike',
@@ -371,7 +371,7 @@ window.__ModuleLoader__.load({
         '  --mar-bill-acid:#C0FE04;',
         '  /* the accent at low alpha, for hovering something that is accent-',
         '     selected — a wash, not a second accent face */',
-        '  --mar-wash-accent:rgba(192,254,4,.14);',
+        '  --mar-wash-accent:rgba(163,216,3,.14);',
         '  /* the accent AS TEXT — a different job from --mar-accent-ink, which is',
         '     the ink you put ON an accent fill. On the dark plate the accent reads',
         '     as a letterform just fine (#C0FE04 on the hover wash is 8.4:1). On the',
@@ -381,7 +381,7 @@ window.__ModuleLoader__.load({
         '     "accent text" is the primary ink instead: there, green is a surface',
         '     (a fill, a wash, a notch) and never a letterform. Anything that draws',
         '     the accent as `color` goes through this variable, not --mar-accent. */',
-        '  --mar-accent-text:#C0FE04;',
+        '  --mar-accent-text:#A3D803;',
         '  /* scrims */',
         '  --mar-scrim:rgba(11,13,11,.75);',
         '}',
@@ -1305,7 +1305,7 @@ window.__ModuleLoader__.load({
       //  so ACCENT_STATE is the same value with no DOM round-trip. Returns the
       //  'r,g,b' triple the canvas alpha prefix expects.
       function bgInk() {
-        return accentRgb(ACCENT_STATE.color).join(',');
+        return accentRgb(accentDim(ACCENT_STATE.color)).join(',');
       }
       var BG_STATE = bgLoad();
 
@@ -1434,6 +1434,21 @@ window.__ModuleLoader__.load({
         return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16),
                 parseInt(h.slice(5, 7), 16)];
       }
+      //  [fork-patch] 2026-10-28 用户："当前选中的主题色太亮了，降低一点亮度"。
+      //  七个色统一过一道亮度衰减：只乘 RGB，不动色相和饱和度，所以换色不会偏色。
+      //  存进 localStorage 的仍是原始色值，色卡的选中比较也仍用原值——衰减只发生在
+      //  真正写进 CSS / 画布的那一刻，将来想调回去只改这一个系数。
+      var ACCENT_DIM = 0.85;
+      function accentDim(hex) {
+        var c = accentRgb(hex);
+        var out = [0, 0, 0];
+        for (var i = 0; i < 3; i++) {
+          var v = Math.round(c[i] * ACCENT_DIM);
+          out[i] = v < 0 ? 0 : (v > 255 ? 255 : v);
+        }
+        return '#' + ((1 << 24) + (out[0] << 16) + (out[1] << 8) + out[2])
+          .toString(16).slice(1).toUpperCase();
+      }
       //  The ink that sits ON an accent fill. The old theme could hard-code
       //  #0B0D0B because there was exactly ONE accent; with seven of them the
       //  fill can be dark (the red is only 4.75:1 against black), so the ink is
@@ -1458,7 +1473,8 @@ window.__ModuleLoader__.load({
       //  layer's own --mar-accent-text:#0B0D0B is therefore re-derived here
       //  rather than left to the cascade.
       function accentApply() {
-        var color = ACCENT_STATE.color;
+        //  存的是原色，写出去的是衰减后的色（见 accentDim）。
+        var color = accentDim(ACCENT_STATE.color);
         var rgb = accentRgb(color);
         var ink = accentInk(color);
         var light = body.classList.contains('mar-bg-light');
@@ -3303,7 +3319,7 @@ var head =
           var hex = accentNorm(sws[j].getAttribute('data-accent'));
           sws[j].setAttribute('aria-checked', hex === ACCENT_STATE.color ? 'true' : 'false');
           if (hex && sws[j].style && sws[j].style.setProperty) {
-            sws[j].style.setProperty('--sw', hex);
+            sws[j].style.setProperty('--sw', accentDim(hex));
           }
         }
         var cellIn = pane.querySelector('#mar-bg-cell');
