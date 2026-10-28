@@ -919,9 +919,15 @@ window.__ModuleLoader__.load({
         '.mar-set-row input[type=range]{flex:1;accent-color:var(--mar-accent);min-width:0;}',
         '.mar-set-row .mar-val{flex:0 0 58px;text-align:right;font-variant-numeric:tabular-nums;}',
         '.mar-set-switch .mar-val{flex:0 0 auto;text-align:left;}',
-        '.mar-set-row input[type=text]{flex:1;min-width:0;font:inherit;color:inherit;',
+        '.mar-set-row input[type=text],.mar-set-row input[type=time]{flex:1;min-width:0;font:inherit;color:inherit;',
         '  background:transparent;border:1px solid var(--mar-line-strong);padding:4px 8px;}',
-        '.mar-set-row input[type=text]:focus{outline:1px solid var(--mar-accent);outline-offset:0;}',
+        '.mar-set-row input[type=text]:focus,.mar-set-row input[type=time]:focus{outline:1px solid var(--mar-accent);outline-offset:0;}',
+        // fork.8：深色时段那两个输入框不定宽拉伸 —— 一行里要放两个 + 中间的破折号 +
+        // 右侧状态值，拉伸会把破折号挤得贴住数字。禁用的框（没开「按时间」时）压暗。
+        '.mar-set-row input[type=time]{flex:0 0 auto;width:104px;padding:3px 6px;}',
+        '.mar-set-row input[type=time]:disabled{opacity:.45;}',
+        '.mar-set-row .mar-range-dash{flex:0 0 auto;opacity:.55;}',
+        '.mar-set-range .mar-val{flex:0 0 44px;}',
         '.mar-set-row button{font:inherit;color:inherit;background:transparent;cursor:pointer;',
         '  flex:0 0 auto;padding:4px 10px;border:1px solid var(--mar-line-strong);}',
         '.mar-set-row button:hover{border-color:var(--mar-accent);color:var(--mar-accent-text);}',
@@ -1333,7 +1339,8 @@ window.__ModuleLoader__.load({
       //           用户 2026-10-19："再给背景动画添加一个透明度，用于调节可见范围"。
       //           它乘在每条字形的 alpha 上，所以 0 就是"看不见"、1 是原样。
       function bgLoad() {
-        var out = { anim: false, scheme: 'dark', cell: 16, speed: 0.55, alpha: 1 };
+        var out = { anim: false, scheme: 'dark', cell: 16, speed: 0.55, alpha: 1,
+                    schemeMode: 'manual', darkFrom: '20:00', darkTo: '07:00' };
         var raw = null;
         try { raw = (typeof window !== 'undefined' && window.localStorage) ? window.localStorage.getItem(BG_STORE_KEY) : null; } catch (e) { raw = null; }
         if (!raw) return out;
@@ -1371,6 +1378,13 @@ window.__ModuleLoader__.load({
         //  Store written before 2026-10-19 has no alpha → full strength (1), which
         //  is exactly what those builds looked like.
         if (typeof s.alpha === 'number') out.alpha = bgNum(s.alpha, 0, 1);
+        // fork.8: 浅/暗 的自动切换。`scheme` 依旧是"手动选中的那一档"，
+        // 自动模式下它不被改写，所以关掉自动就回到原来那档。
+        if (s.schemeMode === 'manual' || s.schemeMode === 'system' || s.schemeMode === 'schedule') {
+          out.schemeMode = s.schemeMode;
+        }
+        if (marTimeValid(s.darkFrom)) out.darkFrom = s.darkFrom;
+        if (marTimeValid(s.darkTo)) out.darkTo = s.darkTo;
         return out;
       }
       function bgSave() {
@@ -1379,6 +1393,88 @@ window.__ModuleLoader__.load({
             window.localStorage.setItem(BG_STORE_KEY, JSON.stringify(BG_STATE));
           }
         } catch (e) {}
+      }
+
+      // ======================================================================
+      //  浅/暗 的自动切换（fork.8，2026-10-29 用户要求）
+      //  --------------------------------------------------------------------
+      //  两个模式，互斥：
+      //    · system   —— 跟随系统。读 `prefers-color-scheme`，系统换主题时
+      //                   matchMedia 的 change 事件会立刻通知，不用轮询。
+      //    · schedule —— 按时间。用户给一个"深色时段"，允许跨午夜
+      //                   （20:00–07:00）。没有事件可听，所以每 30 秒对一次表，
+      //                   并在窗口重新可见时补一次：桌面端被遮挡时定时器会被
+      //                   降频，回到前台必须马上纠正。
+      //  BG_STATE.scheme 永远是"手动选中的那一档"，自动模式下不被改写 ——
+      //  所以关掉自动就回到用户原来选的那档，不会因为中途自动变过色就丢掉。
+      // ======================================================================
+      var MAR_MQ = null;
+      try {
+        MAR_MQ = (typeof window !== 'undefined' && window.matchMedia)
+          ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+      } catch (e) { MAR_MQ = null; }
+
+      function marTimeValid(v) {
+        return typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+      }
+      function marMinutes(v) {
+        if (!marTimeValid(v)) return null;
+        var p = v.split(':');
+        return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+      }
+      function marSystemDark() { return !!(MAR_MQ && MAR_MQ.matches); }
+      function marScheduleDark() {
+        var from = marMinutes(BG_STATE.darkFrom);
+        var to = marMinutes(BG_STATE.darkTo);
+        // 起止相同 = 长度为 0 的窗口，按"从不深色"处理，避免全天深色这种意外。
+        if (from === null || to === null || from === to) return false;
+        var now = new Date();
+        var cur = now.getHours() * 60 + now.getMinutes();
+        return from < to ? (cur >= from && cur < to) : (cur >= from || cur < to);
+      }
+      function marEffectivePair() {
+        var mode = BG_STATE.schemeMode;
+        if (mode === 'system') return marSystemDark() ? 'dark' : 'light';
+        if (mode === 'schedule') return marScheduleDark() ? 'dark' : 'light';
+        return BG_STATE.scheme === 'light' ? 'light' : 'dark';
+      }
+      var marAutoTimer = 0;
+      var marAutoLast = null;
+      function marAutoLive() {
+        return BG_STATE.schemeMode === 'system' || BG_STATE.schemeMode === 'schedule';
+      }
+      function marAutoCheck(force) {
+        if (!marAutoLive()) { marAutoLast = null; return; }
+        var pair = marEffectivePair();
+        if (!force && pair === marAutoLast) return;
+        if (pair === marAutoLast) return;
+        marAutoLast = pair;
+        bgApplyMode();
+      }
+      //  开关/时间被改动后调用：手动档要立刻把那一档重新贴回去，自动档再判一次。
+      function marAutoSync() {
+        if (!marAutoLive()) { marAutoLast = null; bgApplyMode(); return; }
+        marAutoCheck(true);
+      }
+      function marAutoStart() {
+        if (MAR_MQ) {
+          try {
+            if (MAR_MQ.addEventListener) {
+              MAR_MQ.addEventListener('change', function () { marAutoCheck(true); });
+            } else if (MAR_MQ.addListener) {
+              MAR_MQ.addListener(function () { marAutoCheck(true); });
+            }
+          } catch (e) {}
+        }
+        if (marAutoTimer) { clearInterval(marAutoTimer); marAutoTimer = 0; }
+        if (typeof setInterval === 'function') {
+          marAutoTimer = setInterval(function () { marAutoCheck(false); }, 30000);
+        }
+        if (doc && doc.addEventListener) {
+          doc.addEventListener('visibilitychange', function () {
+            if (!doc.hidden) marAutoCheck(false);
+          });
+        }
       }
 
       // ======================================================================
@@ -1884,7 +1980,7 @@ bgObserver.observe(host, { childList: true, subtree: true, attributes: true, att
         // The pair is its own state (BG_STATE.scheme) and survives the switch,
         // which is also why the pair buttons are a radio group that can never
         // end up with nothing selected.
-        var ui = BG_MODES[BG_STATE.scheme] || BG_MODES.dark;
+        var ui = BG_MODES[marEffectivePair()] || BG_MODES.dark;
         if (on) body.classList.add('mar-bg-on'); else body.classList.remove('mar-bg-on');
         // no veil any more (see BG_MODES): the field runs through the chrome
         body.classList.remove('mar-bg-veil');
@@ -2198,6 +2294,7 @@ bgObserver.observe(host, { childList: true, subtree: true, attributes: true, att
           doc.addEventListener('visibilitychange', bgOnVisibility);
         }
         bgApplyMode();
+        marAutoStart();
         bgWatch();
       }
 
@@ -3063,6 +3160,22 @@ try {
             '<button type="button" role="radio" data-pair="light" aria-checked="false">浅色</button>' +
             '<button type="button" role="radio" data-pair="dark" aria-checked="false">深色</button>' +
             '</div></div>' +
+            // fork.8：浅/暗 可以跟着系统走，也可以按时间段切。两行都是开关行
+            // （`.mar-set-switch`），所以不会被"关掉背景动画就变暗"那条规则连坐；
+            // 再补 `.mar-set-appearance`，与上面「配色」那行同一个豁免理由。
+            '<div class="mar-set-row mar-set-appearance mar-set-switch"><label for="mar-follow-sys">跟随系统</label>' +
+            '<input type="checkbox" class="mar-switch" id="mar-follow-sys">' +
+            '<span class="mar-val" data-val="followsys"></span></div>' +
+            '<div class="mar-set-row mar-set-appearance mar-set-switch"><label for="mar-sched-dark">按时间</label>' +
+            '<input type="checkbox" class="mar-switch" id="mar-sched-dark">' +
+            '<span class="mar-val" data-val="sched"></span></div>' +
+            '<div class="mar-set-row mar-set-appearance mar-set-range"><label for="mar-dark-from">深色时段</label>' +
+            '<input type="time" id="mar-dark-from" step="60">' +
+            '<span class="mar-range-dash">–</span>' +
+            '<input type="time" id="mar-dark-to" step="60">' +
+            '<span class="mar-val" data-val="schednow"></span></div>' +
+            '<div class="mar-set-row mar-set-appearance mar-set-note">' +
+            '<span>两个自动模式互斥；点「浅色 / 深色」即回到手动。</span></div>' +
           '</div>' +
           '<div class="mar-set-group">' +
             '<div class="mar-set-head">主题色</div>' +
@@ -3238,6 +3351,16 @@ var head =
           if (!b || b === seg) return;
           var next = b.getAttribute('data-pair');
           if (next !== 'light' && next !== 'dark') return;
+          // fork.8：手动点配色 = 退出自动模式 —— 哪怕点的正是当前显示的那一档，
+          // 也要把模式切回 manual，否则用户会以为"点了没反应、下次还是自动变"。
+          if (BG_STATE.schemeMode !== 'manual') {
+            BG_STATE.schemeMode = 'manual';
+            BG_STATE.scheme = next;
+            bgSave();
+            vtPour(bgApplyMode);
+            syncPane(pane);
+            return;
+          }
           var prevPair = BG_STATE.scheme;
           if (next === prevPair) { syncPane(pane); return; }
           BG_STATE.scheme = next;
@@ -3248,6 +3371,43 @@ var head =
           vtPour(bgApplyMode);
           syncPane(pane);
         });
+
+        // fork.8：跟随系统 / 按时间。两个模式互斥——打开一个就顶掉另一个，
+        // 关掉任何一个都回到手动档（BG_STATE.scheme 里那份选择没被动过）。
+        function marSetMode(mode) {
+          BG_STATE.schemeMode = mode;
+          bgSave();
+          marAutoSync();
+          syncPane(pane);
+        }
+        var followIn = pane.querySelector('#mar-follow-sys');
+        if (followIn) {
+          followIn.addEventListener('change', function () {
+            marSetMode(followIn.checked ? 'system' : 'manual');
+          });
+        }
+        var schedIn = pane.querySelector('#mar-sched-dark');
+        if (schedIn) {
+          schedIn.addEventListener('change', function () {
+            marSetMode(schedIn.checked ? 'schedule' : 'manual');
+          });
+        }
+        // 时间输入框：change 在选完/输入完才触发（input 会在每次敲键时炸一堆），
+        // 非法值（清空、手输乱码）直接回滚显示，不写进状态。
+        function marTimeEdit(input, key) {
+          if (!input) return;
+          var v = String(input.value || '');
+          if (!marTimeValid(v)) { syncPane(pane); return; }
+          if (BG_STATE[key] === v) return;
+          BG_STATE[key] = v;
+          bgSave();
+          marAutoSync();
+          syncPane(pane);
+        }
+        var fromIn = pane.querySelector('#mar-dark-from');
+        if (fromIn) fromIn.addEventListener('change', function () { marTimeEdit(fromIn, 'darkFrom'); });
+        var toIn = pane.querySelector('#mar-dark-to');
+        if (toIn) toIn.addEventListener('change', function () { marTimeEdit(toIn, 'darkTo'); });
 
         // 配色：又一个 radio group —— 七个色块里永远有一个是选中的。它只换
         // UI 强调色，既不碰场开关也不碰 plate（两者都在上面各自的状态里）。
@@ -3309,8 +3469,25 @@ var head =
         if (animIn) animIn.checked = !!BG_STATE.anim;
         var btns = pane.querySelectorAll('.mar-seg button');
         for (var i = 0; i < btns.length; i++) {
-          var on = btns[i].getAttribute('data-pair') === BG_STATE.scheme;
+          // fork.8：自动模式下按钮显示的是"现在实际是哪一档"，不是手动存的值。
+          var on = btns[i].getAttribute('data-pair') === marEffectivePair();
           btns[i].setAttribute('aria-checked', on ? 'true' : 'false');
+        }
+        // fork.8：跟随系统 / 按时间 两个开关互斥，时间范围只在"按时间"时可用。
+        var followIn = pane.querySelector('#mar-follow-sys');
+        if (followIn) followIn.checked = BG_STATE.schemeMode === 'system';
+        var schedIn = pane.querySelector('#mar-sched-dark');
+        if (schedIn) schedIn.checked = BG_STATE.schemeMode === 'schedule';
+        var schedOn = BG_STATE.schemeMode === 'schedule';
+        var fromIn = pane.querySelector('#mar-dark-from');
+        if (fromIn) {
+          if (doc.activeElement !== fromIn) fromIn.value = BG_STATE.darkFrom;
+          fromIn.disabled = !schedOn;
+        }
+        var toIn = pane.querySelector('#mar-dark-to');
+        if (toIn) {
+          if (doc.activeElement !== toIn) toIn.value = BG_STATE.darkTo;
+          toIn.disabled = !schedOn;
         }
         // 配色：同样一个永远唯一的选中项；顺便把色值写回 --sw，这样填充不
         // 依赖 style 属性里自定义属性被解析的运气（将来换成 SVG 时这段保留）。
@@ -3356,7 +3533,10 @@ var head =
           billing: billingEnabled() ? '开' : '关',
           done: doneEnabled() ? '开' : '关',
           boot: bootEnabled() ? '开' : '关',
-          bootfull: bootFullscreenWanted() ? '全屏' : '窗口'
+          bootfull: bootFullscreenWanted() ? '全屏' : '窗口',
+          followsys: BG_STATE.schemeMode === 'system' ? '开' : '关',
+          sched: BG_STATE.schemeMode === 'schedule' ? '开' : '关',
+          schednow: marEffectivePair() === 'dark' ? '深色' : '浅色'
         };
         var outs = pane.querySelectorAll('.mar-val');
         for (var k = 0; k < outs.length; k++) {
