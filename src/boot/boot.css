@@ -50,6 +50,12 @@
   --mb-t-blue: 3.06s;       /* blue pixel tile fades in (its own keyframe) */
   --mb-t-blue-rush: 2.88s;  /* ...but its zoom is already running by then */
   --mb-t-blue-dur: 2.85s;   /* blue tile zoom to full screen */
+  /* Whale mark and the English wordmark share one center line, then a fixed
+     gap. The old caption anchor (40% + 105px) drifted into the 45%-centered
+     mark on any tall window — "英文徽标和英文 logo 叠在一起". */
+  --mb-mark-size: 115px;
+  --mb-mark-center: 40%;
+  --mb-mark-gap: 48px;
   position: fixed;
   inset: 0;
   z-index: 2147483000;
@@ -219,7 +225,8 @@ html[data-mar-boot] #root {
  * It keeps a soft lime halo so it stays legible against an arbitrary desktop
  * wallpaper rather than a black plate. */
 #dshMarBootHost .mb-logo-top {
-  position: absolute; top: 45%; left: 50%; width: 115px; height: 115px;
+  position: absolute; top: var(--mb-mark-center); left: 50%;
+  width: var(--mb-mark-size); height: var(--mb-mark-size);
   transform: translate(-50%, -50%);
   object-fit: contain; z-index: 10; opacity: 1;
   filter: drop-shadow(0 0 26px rgba(192, 254, 4, .38)) drop-shadow(0 0 4px rgba(0, 0, 0, .55));
@@ -234,13 +241,14 @@ html[data-mar-boot] #root {
  * A band cannot move when its text changes width, which is why the standalone's
  * translateX(-50%) box is not reproduced verbatim here. */
 #dshMarBootHost .mb-caption {
-  position: absolute; top: calc(40% + 105px); left: 0; right: 0;
+  position: absolute; left: 0; right: 0;
+  top: calc(var(--mb-mark-center) + (var(--mb-mark-size) / 2) + var(--mb-mark-gap));
   text-align: center; z-index: 10; color: #C0FD04;
   text-shadow: 0 0 18px rgba(0, 0, 0, .55);
 }
-#dshMarBootHost .mb-caption .mb-line1 { font-family: 'Maratype', sans-serif; font-size: 44px; letter-spacing: 0; line-height: 1.1; }
-#dshMarBootHost .mb-caption .mb-line2 { margin-top: 6px; font-family: 'Maratype', sans-serif; font-size: 16px;
-  letter-spacing: 10px; line-height: 1.1; }
+#dshMarBootHost .mb-caption .mb-line1 { font-family: 'Maratype', sans-serif; font-size: 44px; letter-spacing: 0; line-height: 1.1; white-space: nowrap; }
+#dshMarBootHost .mb-caption .mb-line2 { margin-top: 22px; font-family: 'Maratype', sans-serif; font-size: 16px;
+  letter-spacing: 10px; line-height: 1.1; white-space: nowrap; }
 #dshMarBootHost .mb-logo-bg { position: absolute; top: 50%; left: 50%; width: 140vmin; height: 140vmin;
   transform: translate(-50%, -50%); object-fit: contain; z-index: 1; opacity: 0; }
 /* 3) HUI frames, released one by one from the outside in */
