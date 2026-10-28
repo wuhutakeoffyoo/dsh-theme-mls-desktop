@@ -166,11 +166,102 @@ function patchMain(text) {
     ].join('\n'),
     'boot-chrome ipc'
   );
+  return upgradeMain(text);
+}
+
+const FULLSCREEN_IPC = [
+  'let bootFullscreenSnapshot = null;',
+  'let bootFullscreenTimer = null;',
+  'function restoreBootFullscreen() {',
+  '\tif (bootFullscreenTimer) { clearTimeout(bootFullscreenTimer); bootFullscreenTimer = null; }',
+  '\tif (!bootFullscreenSnapshot || !mainWindow || mainWindow.isDestroyed()) {',
+  '\t\tbootFullscreenSnapshot = null;',
+  '\t\treturn;',
+  '\t}',
+  '\tconst snap = bootFullscreenSnapshot;',
+  '\tbootFullscreenSnapshot = null;',
+  '\ttry { mainWindow.setAlwaysOnTop(false); } catch (error) {}',
+  '\ttry {',
+  '\t\tif (snap.fullScreen) mainWindow.setFullScreen(true);',
+  '\t\telse {',
+  '\t\t\tmainWindow.setBounds(snap.bounds);',
+  '\t\t\tif (snap.maximized) mainWindow.maximize();',
+  '\t\t}',
+  '\t\tconsole.log("[dsh-theme-mls-next] boot fullscreen off");',
+  '\t} catch (error) {',
+  '\t\tconsole.error("[dsh-theme-mls-next] boot fullscreen restore failed", error);',
+  '\t}',
+  '}',
+  'ipcMain.on("dsh-desktop:boot-fullscreen", (event, enabled) => {',
+  '\tif (!bootChromeEnabled() || process.platform !== "win32") return;',
+  '\tif (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;',
+  '\tconst frame = event.senderFrame;',
+  '\tif (frame && (frame !== mainWindow.webContents.mainFrame || !String(frame.url || "").startsWith("dsh-app://app/"))) return;',
+  '\tif (typeof enabled !== "boolean") return;',
+  '\ttry {',
+  '\t\tif (enabled) {',
+  '\t\t\tif (bootFullscreenSnapshot) return;',
+  '\t\t\tconst display = screen.getDisplayMatching(mainWindow.getBounds());',
+  '\t\t\tbootFullscreenSnapshot = {',
+  '\t\t\t\tbounds: typeof mainWindow.getNormalBounds === "function" ? mainWindow.getNormalBounds() : mainWindow.getBounds(),',
+  '\t\t\t\tmaximized: mainWindow.isMaximized(),',
+  '\t\t\t\tfullScreen: mainWindow.isFullScreen()',
+  '\t\t\t};',
+  '\t\t\tconst cover = () => {',
+  '\t\t\t\tmainWindow.setAlwaysOnTop(true, "screen-saver");',
+  '\t\t\t\tmainWindow.setBounds(display.bounds);',
+  '\t\t\t\tmainWindow.show();',
+  '\t\t\t};',
+  '\t\t\tif (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);',
+  '\t\t\tif (mainWindow.isMaximized()) {',
+  '\t\t\t\tmainWindow.once("unmaximize", cover);',
+  '\t\t\t\tmainWindow.unmaximize();',
+  '\t\t\t} else cover();',
+  '\t\t\tbootFullscreenTimer = setTimeout(restoreBootFullscreen, 22000);',
+  '\t\t\tconsole.log("[dsh-theme-mls-next] boot fullscreen on");',
+  '\t\t} else restoreBootFullscreen();',
+  '\t} catch (error) {',
+  '\t\tconsole.error("[dsh-theme-mls-next] boot fullscreen failed", error);',
+  '\t\trestoreBootFullscreen();',
+  '\t}',
+  '});',
+  ''
+].join('\n');
+
+function upgradeMain(text) {
+  const importNeedle = 'safeStorage, session, shell, systemPreferences } from "electron";';
+  if (!text.includes('screen, session, shell, systemPreferences } from "electron";')) {
+    text = replaceOnce(text, importNeedle, 'safeStorage, screen, session, shell, systemPreferences } from "electron";', 'screen import');
+  }
+  if (!text.includes('dsh-desktop:boot-fullscreen')) {
+    text = replaceOnce(
+      text,
+      'ipcMain.on("dsh-desktop:boot-chrome"',
+      FULLSCREEN_IPC + 'ipcMain.on("dsh-desktop:boot-chrome"',
+      'boot fullscreen ipc'
+    );
+  }
   return text;
 }
 
+function upgradePreload(text) {
+  if (text.includes('dsh-desktop:boot-fullscreen')) return text;
+  const oldBridge = [
+    'const bootChrome = (visible, who) => electron.ipcRenderer.send("dsh-desktop:boot-chrome", visible, who);',
+    '\t\ttry {',
+    '\t\t\telectron.contextBridge.exposeInMainWorld("dshDesktopBootChrome", { chrome: bootChrome });'
+  ].join('\n');
+  const newBridge = [
+    'const bootChrome = (visible, who) => electron.ipcRenderer.send("dsh-desktop:boot-chrome", visible, who);',
+    '\t\tconst bootFullscreen = (enabled) => electron.ipcRenderer.send("dsh-desktop:boot-fullscreen", enabled);',
+    '\t\ttry {',
+    '\t\t\telectron.contextBridge.exposeInMainWorld("dshDesktopBootChrome", { chrome: bootChrome, fullscreen: bootFullscreen });'
+  ].join('\n');
+  return replaceOnce(text, oldBridge, newBridge, 'preload fullscreen');
+}
+
 function patchPreload(text) {
-  if (text.includes(MARKER)) return text;
+  if (text.includes(MARKER)) return upgradePreload(text);
   const anchor = 'if (location.protocol === "dsh-app:" && location.hostname === "app") {';
   return replaceOnce(
     text,
@@ -285,8 +376,8 @@ function apply(appDir) {
     if (!fs.existsSync(file)) fail('missing extracted file ' + file);
   }
 
-  fs.writeFileSync(mainPath, patchMain(fs.readFileSync(mainPath, 'utf8')));
-  fs.writeFileSync(preloadPath, patchPreload(fs.readFileSync(preloadPath, 'utf8')));
+  fs.writeFileSync(mainPath, upgradeMain(patchMain(fs.readFileSync(mainPath, 'utf8'))));
+  fs.writeFileSync(preloadPath, upgradePreload(patchPreload(fs.readFileSync(preloadPath, 'utf8'))));
   fs.writeFileSync(indexPath, patchIndex(fs.readFileSync(indexPath, 'utf8')));
   syntaxCheck(mainPath);
   syntaxCheck(preloadPath);

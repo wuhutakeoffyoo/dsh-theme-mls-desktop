@@ -3082,6 +3082,10 @@ try {
             '<div class="mar-set-row mar-set-switch"><label for="mar-boot">启用</label>' +
             '<input type="checkbox" class="mar-switch" id="mar-boot">' +
             '<span class="mar-val" data-val="boot"></span></div>' +
+            '<div class="mar-set-row mar-set-switch"><label for="mar-boot-full">全屏播放</label>' +
+            '<input type="checkbox" class="mar-switch" id="mar-boot-full">' +
+            '<span class="mar-val" data-val="bootfull"></span></div>' +
+            '<div class="mar-set-row mar-set-note"><span>下次冷启动生效。关闭后动画只在窗口内播放。</span></div>' +
           '</div>' +
           '<div class="mar-set-group">' +
             '<div class="mar-set-head">任务完成动画</div>' +
@@ -3124,6 +3128,15 @@ try {
             if (!BOOT_STATE.on && bootCleanup) {
               try { bootCleanup(); } catch (e) {}
             }
+            syncPane(pane);
+          });
+        }
+        var bootFullIn = pane.querySelector('#mar-boot-full');
+        if (bootFullIn) {
+          bootFullIn.addEventListener('change', function () {
+            BOOT_STATE.fullscreen = !!bootFullIn.checked;
+            bootSave();
+            if (!BOOT_STATE.fullscreen) setBootFullscreen(false);
             syncPane(pane);
           });
         }
@@ -3312,6 +3325,11 @@ var head =
         // 名单之外），所以这里不写任何说明文字——用户 2026-10-17 要求删掉那句。
         var bootIn = pane.querySelector('#mar-boot');
         if (bootIn) bootIn.checked = bootEnabled();
+        var bootFullIn = pane.querySelector('#mar-boot-full');
+        if (bootFullIn) {
+          bootFullIn.checked = bootFullscreenWanted();
+          bootFullIn.disabled = !bootEnabled();
+        }
         if (BG_STATE.anim) pane.classList.remove('mar-anim-off');
         else pane.classList.add('mar-anim-off');
         var vals = {
@@ -3321,7 +3339,8 @@ var head =
           speed: BG_STATE.speed.toFixed(2),
           billing: billingEnabled() ? '开' : '关',
           done: doneEnabled() ? '开' : '关',
-          boot: bootEnabled() ? '开' : '关'
+          boot: bootEnabled() ? '开' : '关',
+          bootfull: bootFullscreenWanted() ? '全屏' : '窗口'
         };
         var outs = pane.querySelectorAll('.mar-val');
         for (var k = 0; k < outs.length; k++) {
@@ -3378,10 +3397,13 @@ var head =
         try {
           var raw = (typeof window !== 'undefined' && window.localStorage)
             ? window.localStorage.getItem(BOOT_STORE_KEY) : null;
-          if (!raw) return { on: true };
+          if (!raw) return { on: true, fullscreen: true };
           var parsed = JSON.parse(raw);
-          return { on: !(parsed && parsed.on === false) };
-        } catch (e) { return { on: true }; }
+          return {
+            on: !(parsed && parsed.on === false),
+            fullscreen: !(parsed && parsed.fullscreen === false)
+          };
+        } catch (e) { return { on: true, fullscreen: true }; }
       }
       function bootSave() {
         try {
@@ -3392,6 +3414,12 @@ var head =
       }
       var BOOT_STATE = bootLoad();
       function bootEnabled() { return BOOT_STATE.on !== false; }
+      function bootFullscreenWanted() { return BOOT_STATE.fullscreen !== false; }
+      function setBootFullscreen(on) {
+        var bridge = (typeof window !== 'undefined') ? window.dshDesktopBootChrome : null;
+        if (!bridge || typeof bridge.fullscreen !== 'function') return;
+        try { bridge.fullscreen(!!on); } catch (e) {}
+      }
       // [fork-patch] 同 marDoneReduced：本 fork 默认无视系统「减少动态效果」，
       // 让冷启动揭幕在本机关了 Windows 动画的情况下也照常播放。
       // 恢复上游行为：localStorage.setItem('mar.motion.override', '0')。
@@ -3412,6 +3440,7 @@ var head =
         if (bootReduced()) return;
         if (bootAlreadyPlayed() || !bootIsPageLoad()) return;
         markBootPlayed();
+        if (bootFullscreenWanted()) setBootFullscreen(true);
 
         var host = doc.createElement('div');
         host.id = 'dshMarBootHost';
@@ -3449,6 +3478,7 @@ var head =
           if (removed) return;
           removed = true;
           if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+          setBootFullscreen(false);
           if (typeof window !== 'undefined') {
             try { if (window.__mbMarathon) window.__mbMarathon.stop(); } catch (e) {}
             // __mbIntroStop restores html/body/#root backgrounds and the native
