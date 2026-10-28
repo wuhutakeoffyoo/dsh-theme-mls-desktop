@@ -5,6 +5,19 @@
 次版本号 = 向后兼容的新功能；
 修订号 = 向后兼容的 bug 修复。
 
+## [0.5.1-fork.2] - 2026-10-28
+
+**自用 fork：背景光点可以流得更快；DSH NEXT 冷启动可以透出桌面。**
+
+### 流动速度
+- 设置里的「呼吸速度」改名为「流动速度」。这个旋钮乘的是点阵时钟，四路正弦一起相位前移，看起来就是光点在漂，不是单独的明暗呼吸。
+- 上限从 `1.5` 提到 `5`。已经存下的、且不超过旧上限的值会在下次加载时放大一倍并打上 `speedScaled`，避免每次启动都再乘一次。觉得太快就把滑块往左拉。
+
+### DSH NEXT 全透冷启动
+- 上游 `shell-patch/auto.cjs` 认的是 `@deepseek-ai/dsh-desktop`，打不到 anywhere-labs 的 `dsh-desktop-next`。新增 `shell-patch/next-desktop.cjs`：给 DSH NEXT 的主窗口补 `transparent: true`、启动期间不把窗口底色涂成不透明、并接上主题已经在调用的 `dshDesktopBootChrome`。
+- 主题自己的揭幕在 `html[data-mar-boot]` 上已经会把页面背景清掉；缺的是窗口本身的 alpha。补丁只改安装包里的 `app.asar`，可用 `--revert` 还原。
+- 不想要透明窗：设环境变量 `DSH_DESKTOP_BOOT_CHROME=0` 后重启。
+
 ## [0.5.1-fork.1] - 2026-10-27
 
 **自用 fork：默认无视系统「减少动态效果」，让启动揭幕 / 任务完成动画 / 背景点阵在被关掉 Windows 动画的机器上照常播放。**

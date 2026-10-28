@@ -1315,6 +1315,11 @@ window.__ModuleLoader__.load({
 
       function bgNum(v, a, b) { return v < a ? a : (v > b ? b : v); }
 
+      // Clock ceiling for the dot field. `speed` advances every sine in bgDraw,
+      // so it is the flow of the glyphs, not a separate "breath" knob. The old
+      // 1.5 cap (labelled 呼吸速度) still looked nearly static at the top.
+      var BG_SPEED_MAX = 5;
+
       // Read once at apply(); every later change goes through the pane handlers.
       //   anim    whether the field is DRAWN at all: its own switch, OFF by
       //           default, so the theme is usable without the dot field. ('green'
@@ -1346,7 +1351,23 @@ window.__ModuleLoader__.load({
         if (typeof s.anim === 'boolean') out.anim = s.anim;   // v3 wins over a migrated mode
         if (pair) out.scheme = pair;
         if (typeof s.cell === 'number') out.cell = bgNum(Math.round(s.cell), 8, 48);
-        if (typeof s.speed === 'number') out.speed = bgNum(s.speed, 0, 1.5);
+        if (typeof s.speed === 'number') {
+          var speed = s.speed;
+          // fork.2: values saved under the old 1.5 ceiling are scaled once, then
+          // flagged, so a later launch cannot scale them again.
+          if (s.speedScaled !== true && speed <= 1.5) {
+            speed = bgNum(speed * 2, 0, BG_SPEED_MAX);
+            try {
+              s.speed = speed;
+              s.speedScaled = true;
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem(BG_STORE_KEY, JSON.stringify(s));
+              }
+            } catch (e) {}
+          }
+          out.speed = bgNum(speed, 0, BG_SPEED_MAX);
+          out.speedScaled = true;
+        }
         //  Store written before 2026-10-19 has no alpha → full strength (1), which
         //  is exactly what those builds looked like.
         if (typeof s.alpha === 'number') out.alpha = bgNum(s.alpha, 0, 1);
@@ -3046,8 +3067,8 @@ try {
             '<div class="mar-set-row"><label for="mar-bg-alpha">透明度</label>' +
             '<input type="range" id="mar-bg-alpha" min="0" max="1" step="0.01">' +
             '<span class="mar-val" data-val="alpha"></span></div>' +
-            '<div class="mar-set-row"><label for="mar-bg-speed">呼吸速度</label>' +
-            '<input type="range" id="mar-bg-speed" min="0" max="1.5" step="0.05">' +
+            '<div class="mar-set-row"><label for="mar-bg-speed">流动速度</label>' +
+            '<input type="range" id="mar-bg-speed" min="0" max="' + BG_SPEED_MAX + '" step="0.05">' +
             '<span class="mar-val" data-val="speed"></span></div>' +
           '</div>' +
           // 启动动画：冷启动揭幕（鲸鱼 → HUI 框 → 蓝块 → 红扫 → 揭幕）。
@@ -3239,7 +3260,8 @@ var head =
           });
         }
         speedIn.addEventListener('input', function () {
-          BG_STATE.speed = bgNum(parseFloat(speedIn.value) || 0, 0, 1.5);
+          BG_STATE.speed = bgNum(parseFloat(speedIn.value) || 0, 0, BG_SPEED_MAX);
+          BG_STATE.speedScaled = true;
           bgSave();
           syncPane(pane);
         });
