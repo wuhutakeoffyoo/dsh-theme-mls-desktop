@@ -2383,8 +2383,8 @@ var DONE_STORE_KEY = 'mar.done.v1';
 
       // [fork-patch] 上游尊重系统「减少动态效果」并整段跳过（这一拍没有静态形态
       // 可言，半成品比不放更糟）。本 fork 默认改为无视该闸门 —— 本机 Windows
-      // 「动画效果」关闭时任务完成动画曾被静默跳过。想恢复上游行为，在页面
-      // 控制台执行 localStorage.setItem('mar.motion.override', '0')。
+      // 「动画效果」关闭时任务完成动画曾被静默跳过。想恢复上游行为：设置 ›
+      // 动效 › 忽略系统（关），等价于 localStorage.setItem('mar.motion.override', '0')。
       function marMotionOverride() {
         try {
           return !((typeof window !== 'undefined' && window.localStorage) &&
@@ -3183,6 +3183,18 @@ try {
               accentSwatches() +
             '</div>' +
           '</div>' +
+          // 动效（2026-10-29 用户："「减少动态效果」？我没有在设置里看见这个选项"）。
+          // 之前这个行为只有一条隐藏的 localStorage 逃生口（mar.motion.override），
+          // 界面上看不见；上游尊重系统「减少动态效果」，本 fork 默认反过来。现在
+          // 把它做成正式开关，默认保持 fork 的行为（开 = 忽略系统）。
+          '<div class="mar-set-group">' +
+            '<div class="mar-set-head">动效</div>' +
+            '<div class="mar-set-row mar-set-switch"><label for="mar-motion-ignore">忽略系统</label>' +
+            '<input type="checkbox" class="mar-switch" id="mar-motion-ignore">' +
+            '<span class="mar-val" data-val="motion"></span></div>' +
+            '<div class="mar-set-row mar-set-note">' +
+            '<span>系统设置里的「动画效果 / 减少动态效果」将不再跳过主题的启动、完成与背景动画。</span></div>' +
+          '</div>' +
           '<div class="mar-set-group">' +
             '<div class="mar-set-head">背景动画</div>' +
             '<div class="mar-set-row mar-set-switch"><label for="mar-bg-anim">启用</label>' +
@@ -3409,6 +3421,23 @@ var head =
         var toIn = pane.querySelector('#mar-dark-to');
         if (toIn) toIn.addEventListener('change', function () { marTimeEdit(toIn, 'darkTo'); });
 
+        // 动效：写 localStorage（'0' = 遵循系统，'1' = 忽略）。三个闸门
+        // （bootReduced / marDoneReduced / reducedMotion）每次用前都重新读，所以
+        // 不用重启；只有背景点阵的开关量是在 bgStart 里判的，改完要让它按新状态
+        // 重画一次 —— bgApplyMode() 会重估 reduced 分支并重新起停 rAF。
+        var motionIn = pane.querySelector('#mar-motion-ignore');
+        if (motionIn) {
+          motionIn.addEventListener('change', function () {
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem('mar.motion.override', motionIn.checked ? '1' : '0');
+              }
+            } catch (e) {}
+            syncPane(pane);
+            try { bgApplyMode(); } catch (e) {}
+          });
+        }
+
         // 配色：又一个 radio group —— 七个色块里永远有一个是选中的。它只换
         // UI 强调色，既不碰场开关也不碰 plate（两者都在上面各自的状态里）。
         var swRow = pane.querySelector('.mar-sw');
@@ -3479,6 +3508,10 @@ var head =
         var schedIn = pane.querySelector('#mar-sched-dark');
         if (schedIn) schedIn.checked = BG_STATE.schemeMode === 'schedule';
         var schedOn = BG_STATE.schemeMode === 'schedule';
+        // 动效：忽略系统「减少动态效果」—— 默认开（本 fork 的行为），关掉即回到
+        // 上游语义（系统开了减少动态效果就跳过动画）。
+        var motionIn = pane.querySelector('#mar-motion-ignore');
+        if (motionIn) motionIn.checked = marMotionOverride();
         var fromIn = pane.querySelector('#mar-dark-from');
         if (fromIn) {
           if (doc.activeElement !== fromIn) fromIn.value = BG_STATE.darkFrom;
@@ -3536,7 +3569,8 @@ var head =
           bootfull: bootFullscreenWanted() ? '全屏' : '窗口',
           followsys: BG_STATE.schemeMode === 'system' ? '开' : '关',
           sched: BG_STATE.schemeMode === 'schedule' ? '开' : '关',
-          schednow: marEffectivePair() === 'dark' ? '深色' : '浅色'
+          schednow: marEffectivePair() === 'dark' ? '深色' : '浅色',
+          motion: marMotionOverride() ? '忽略' : '遵循'
         };
         var outs = pane.querySelectorAll('.mar-val');
         for (var k = 0; k < outs.length; k++) {
