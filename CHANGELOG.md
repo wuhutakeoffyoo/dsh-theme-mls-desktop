@@ -5,6 +5,13 @@
 次版本号 = 向后兼容的新功能；
 修订号 = 向后兼容的 bug 修复。
 
+## [0.5.1-fork.10] - 2026-10-29
+
+**自用 fork：全屏播放开关会先问壳是否支持。**
+
+- 官方壳只接 `dshDesktopBootChrome.chrome()`；`fullscreen()` 是 DSH NEXT 打了 `shell-patch/next-desktop.cjs` 之后才有的。以前在没有这个通道的壳上，「全屏播放」开关点了没有任何反应。
+- 新增 `bootFullscreenAvailable()` 探测：没有 `fullscreen()` 时，设置页把该开关**禁用**并在右侧写「不可用」，揭幕照旧在窗口内播放。插件的其它部分不受影响。
+
 ## [0.5.1-fork.9] - 2026-10-29
 
 **自用 fork：把「忽略系统减少动态效果」做成设置项。**

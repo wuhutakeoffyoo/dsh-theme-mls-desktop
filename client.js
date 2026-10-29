@@ -3554,7 +3554,10 @@ var head =
         var bootFullIn = pane.querySelector('#mar-boot-full');
         if (bootFullIn) {
           bootFullIn.checked = bootFullscreenWanted();
-          bootFullIn.disabled = !bootEnabled();
+          // 按需判断：壳没接 dshDesktopBootChrome.fullscreen（官方壳，或 DSH NEXT
+          // 没打 next-desktop 补丁）时，这个开关点了也不会有反应 —— 直接禁用并
+          // 在值里写明「不可用」，而不是留一个假开关。
+          bootFullIn.disabled = !bootEnabled() || !bootFullscreenAvailable();
         }
         if (BG_STATE.anim) pane.classList.remove('mar-anim-off');
         else pane.classList.add('mar-anim-off');
@@ -3566,7 +3569,8 @@ var head =
           billing: billingEnabled() ? '开' : '关',
           done: doneEnabled() ? '开' : '关',
           boot: bootEnabled() ? '开' : '关',
-          bootfull: bootFullscreenWanted() ? '全屏' : '窗口',
+          bootfull: bootFullscreenAvailable()
+            ? (bootFullscreenWanted() ? '全屏' : '窗口') : '不可用',
           followsys: BG_STATE.schemeMode === 'system' ? '开' : '关',
           sched: BG_STATE.schemeMode === 'schedule' ? '开' : '关',
           schednow: marEffectivePair() === 'dark' ? '深色' : '浅色',
@@ -3645,6 +3649,13 @@ var head =
       var BOOT_STATE = bootLoad();
       function bootEnabled() { return BOOT_STATE.on !== false; }
       function bootFullscreenWanted() { return BOOT_STATE.fullscreen !== false; }
+      // 壳是否真的接了这个通道：官方壳只有 chrome()，DSH NEXT 打了
+      // shell-patch/next-desktop.cjs 才有 fullscreen()。没有就说明这个开关做不到，
+      // 设置页会把它禁掉并写「不可用」，揭幕照旧在窗口内播。
+      function bootFullscreenAvailable() {
+        var bridge = (typeof window !== 'undefined') ? window.dshDesktopBootChrome : null;
+        return !!(bridge && typeof bridge.fullscreen === 'function');
+      }
       function setBootFullscreen(on) {
         var bridge = (typeof window !== 'undefined') ? window.dshDesktopBootChrome : null;
         if (!bridge || typeof bridge.fullscreen !== 'function') return;
