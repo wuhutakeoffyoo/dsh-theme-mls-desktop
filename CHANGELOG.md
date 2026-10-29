@@ -5,6 +5,19 @@
 次版本号 = 向后兼容的新功能；
 修订号 = 向后兼容的 bug 修复。
 
+## [0.5.1-fork.12] - 2026-10-29
+
+**自用 fork：改完主题不再整页变黑（热重载两代重叠）。**
+
+- 现象：覆盖节点里的 `client.js` 后，DSH 变成纯黑、什么都不显示，只能重启。
+- 机制：`dsh-client-hmr` 的 `pollIntervalMs` 在轮询插件 bundle，文件一变就「重新执行 bundle + 重新挂载」。新旧两代于是可能重叠：运行时**先 apply 新一代、后 dispose 旧一代**时，新一代被 `__dshThemeMarathonApplied` 直接劝退，旧一代随后把样式表、`theme-marathon` 类，以及写在 `<body>` 上的 `--dsw-alias-*` 内联变量全部拆走 —— 页面既没有主题也没有 DSH 自己的别名字色，而 NEXT 的窗口是透明的，于是整片纯黑。
+- 修法：每个 bundle 实例带一个 `MAR_INSTANCE` 身份串，存在 `window.__dshThemeMarathonOwner` 上。apply 进来先看 owner：
+  - owner 是**别的实例**（热重载）→ 先同步调用它注册在 `window.__dshThemeMarathonDispose` 的 dispose，接管所有权，再挂自己；
+  - owner 是**自己**且已 applied → 这才是同一次挂载里的重复 apply，直接返回；
+  - 没有 owner（老版本留下的标志）→ 视为陈旧状态，照常挂载并接管。
+- dispose 同时改成**单次执行**（`disposed` 闸 + 校验 `__dshThemeMarathonDispose` 仍指向自己），因为运行时在新一代挂载后还可能再调一次旧 dispose，第二次不许再动 DOM。
+- 顺带把部署方式改成「先写 `.pending`，应用退出后再换上」：热重载本身不再被无谓触发。
+
 ## [0.5.1-fork.11] - 2026-10-29
 
 **自用 fork：动效开关改成「开 / 关」，并且真的会立即生效。**

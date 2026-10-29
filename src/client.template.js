@@ -42,9 +42,23 @@ window.__ModuleLoader__.load({
     var DONE_PAYLOAD = /*__DONE_PAYLOAD__*/ null;
 
     function apply(ctx) {
-      // ---- idempotency -----------------------------------------------------
-      if (typeof window !== 'undefined' && window.__dshThemeMarathonApplied) return;
-      if (typeof window !== 'undefined') window.__dshThemeMarathonApplied = true;
+      // ---- idempotency + hot reload ----------------------------------------
+      // client-hmr 会在同一个页面里**重新执行本 bundle 并重新挂载**插件，于是新旧
+      // 两代可能重叠。原来的顺序是「看到 __dshThemeMarathonApplied 就直接 return」，
+      // 一旦运行时先 apply 新一代、后 dispose 旧一代，新一代会被这个标志直接劝退，
+      // 旧一代随后把样式表、body 类和 `--dsw-alias-*` 内联变量全部拆走 —— 页面既没
+      // 主题也没有 DSH 自己的别名字色，而窗口是透明的，结果是整片纯黑、只能重启
+      // （2026-10-29 用户实测「每次改完主题都要重启」）。
+      // 正确顺序：先把还活着的上一代同步拆掉（它的 dispose 会清掉那个标志），
+      // 再判断是不是同一次挂载里的重复 apply。
+      if (typeof window !== 'undefined') {
+        if (typeof window.__dshThemeMarathonDispose === 'function') {
+          try { window.__dshThemeMarathonDispose(); } catch (e) {}
+          window.__dshThemeMarathonDispose = null;
+        }
+        if (window.__dshThemeMarathonApplied) return;
+        window.__dshThemeMarathonApplied = true;
+      }
 
       var doc = (typeof document !== 'undefined') ? document : null;
       if (!doc) return;
@@ -4556,7 +4570,15 @@ attachDone();
       // unstyled-but-mounted theme is a far better failure than a headless
       // document. The final sweep re-checks by id/selector rather than by
       // in-memory reference, which covers the paths where a reference was lost.
-      return function dispose() {
+      var disposed = false;
+      var dispose = function dispose() {
+        // 只拆一次，而且必须先于新一代的 apply 完成（见 apply 顶部的注释）：
+        // 运行时在新一代挂载之后还可能再调一次旧 dispose，第二次什么都不许做。
+        if (disposed) return;
+        disposed = true;
+        if (typeof window !== 'undefined' && window.__dshThemeMarathonDispose === dispose) {
+          window.__dshThemeMarathonDispose = null;
+        }
         var steps = [
           function () { if (bootCleanup) bootCleanup(); },
           function () { if (typeof window !== 'undefined') window.__mbBootDone = null; },
@@ -4660,6 +4682,8 @@ attachDone();
           try { steps[i](); } catch (e) {}
         }
       };
+      if (typeof window !== 'undefined') window.__dshThemeMarathonDispose = dispose;
+      return dispose;
     }
 
     exports.apply = apply;
