@@ -1998,6 +1998,8 @@ bgObserver.observe(host, { childList: true, subtree: true, attributes: true, att
         if (bgCanvas) bgCanvas.style.display = on ? 'block' : 'none';
         bgMarkClear(!on);
         if (!on) { bgStop(); return; }
+        // 动效关：停掉循环并补一帧静态点阵（背景动画开关可以开着，但"动"归总开关管）。
+        if (marMotionBlocked()) { bgStop(); if (bgCanvas && bgCtx) bgDraw(bgElapsed); return; }
         bgResize();
         bgDraw(bgElapsed);
         bgStart();
@@ -2381,20 +2383,29 @@ var DONE_STORE_KEY = 'mar.done.v1';
       var DONE_STATE = doneLoad();
       function doneEnabled() { return DONE_STATE.on !== false; }
 
-      // [fork-patch] 上游尊重系统「减少动态效果」并整段跳过（这一拍没有静态形态
-      // 可言，半成品比不放更糟）。本 fork 默认改为无视该闸门 —— 本机 Windows
-      // 「动画效果」关闭时任务完成动画曾被静默跳过。想恢复上游行为：设置 ›
-      // 动效 › 忽略系统（关），等价于 localStorage.setItem('mar.motion.override', '0')。
-      function marMotionOverride() {
+      // ======================================================================
+      //  动效总开关（设置 › 动效 › 启用）
+      //  --------------------------------------------------------------------
+      //  上游把「系统是否开启减少动态效果」当成硬闸门，开了就整段跳过动画。
+      //  本机 Windows 的「动画效果」是关的，于是启动揭幕 / 完成动画被静默跳过，
+      //  所以本 fork 改成**用户自己说了算**：
+      //    开（默认）= 照常播放，且不看系统偏好；
+      //    关        = 全部不播，只留静态形态（等同系统开了「减少动态效果」）。
+      //  覆盖范围：冷启动揭幕、任务完成动画、背景点阵循环、设置页马赛克切换。
+      //  存储沿用 mar.motion.override：'0' = 关，其余 = 开。
+      // ======================================================================
+      var MOTION_STORE_KEY = 'mar.motion.override';
+      function marMotionEnabled() {
         try {
-          return !((typeof window !== 'undefined' && window.localStorage) &&
-            window.localStorage.getItem('mar.motion.override') === '0');
+          if (typeof window === 'undefined' || !window.localStorage) return true;
+          return window.localStorage.getItem(MOTION_STORE_KEY) !== '0';
         } catch (e) { return true; }
       }
+      // 三个闸门（marDoneReduced / bootReduced / reducedMotion）共用同一句话：
+      // 「这段动画要不要跳过」。
+      function marMotionBlocked() { return !marMotionEnabled(); }
 function marDoneReduced() {
-        if (marMotionOverride()) return false;
-        return !!(typeof window !== 'undefined' && window.matchMedia &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        return marMotionBlocked();
       }
 
       var doneCleanup = null;
@@ -3183,17 +3194,15 @@ try {
               accentSwatches() +
             '</div>' +
           '</div>' +
-          // 动效（2026-10-29 用户："「减少动态效果」？我没有在设置里看见这个选项"）。
-          // 之前这个行为只有一条隐藏的 localStorage 逃生口（mar.motion.override），
-          // 界面上看不见；上游尊重系统「减少动态效果」，本 fork 默认反过来。现在
-          // 把它做成正式开关，默认保持 fork 的行为（开 = 忽略系统）。
+          // 动效：主题动画的总开关。上游把「系统减少动态效果」当硬闸门，
+          // 本机该偏好是关的、动画会被静默跳过，所以这里改成用户自己说了算。
           '<div class="mar-set-group">' +
             '<div class="mar-set-head">动效</div>' +
-            '<div class="mar-set-row mar-set-switch"><label for="mar-motion-ignore">忽略系统</label>' +
-            '<input type="checkbox" class="mar-switch" id="mar-motion-ignore">' +
+            '<div class="mar-set-row mar-set-switch"><label for="mar-motion">启用</label>' +
+            '<input type="checkbox" class="mar-switch" id="mar-motion">' +
             '<span class="mar-val" data-val="motion"></span></div>' +
             '<div class="mar-set-row mar-set-note">' +
-            '<span>系统设置里的「动画效果 / 减少动态效果」将不再跳过主题的启动、完成与背景动画。</span></div>' +
+            '<span>关掉后启动揭幕、任务完成动画、背景点阵、设置页切换都不再播放（只留静态形态）。背景点阵立即生效，另两者下次触发时生效。</span></div>' +
           '</div>' +
           '<div class="mar-set-group">' +
             '<div class="mar-set-head">背景动画</div>' +
@@ -3421,11 +3430,12 @@ var head =
         var toIn = pane.querySelector('#mar-dark-to');
         if (toIn) toIn.addEventListener('change', function () { marTimeEdit(toIn, 'darkTo'); });
 
-        // 动效：写 localStorage（'0' = 遵循系统，'1' = 忽略）。三个闸门
-        // （bootReduced / marDoneReduced / reducedMotion）每次用前都重新读，所以
-        // 不用重启；只有背景点阵的开关量是在 bgStart 里判的，改完要让它按新状态
-        // 重画一次 —— bgApplyMode() 会重估 reduced 分支并重新起停 rAF。
-        var motionIn = pane.querySelector('#mar-motion-ignore');
+        // 动效总开关：写 localStorage（'0' = 关闭，'1' = 开启）。三个闸门
+        // （marDoneReduced / bootReduced / reducedMotion）每次用前都重新读，所以
+        // 不用重启；背景点阵还要立刻停/恢复 —— bgApplyMode() 里那条 marMotionBlocked
+        // 分支会 bgStop() 并补画一帧静态点阵（只调 bgStart 是不够的：循环已经在跑
+        // 时它会直接 return，这正是「开关没反应」的原因）。
+        var motionIn = pane.querySelector('#mar-motion');
         if (motionIn) {
           motionIn.addEventListener('change', function () {
             try {
@@ -3508,10 +3518,9 @@ var head =
         var schedIn = pane.querySelector('#mar-sched-dark');
         if (schedIn) schedIn.checked = BG_STATE.schemeMode === 'schedule';
         var schedOn = BG_STATE.schemeMode === 'schedule';
-        // 动效：忽略系统「减少动态效果」—— 默认开（本 fork 的行为），关掉即回到
-        // 上游语义（系统开了减少动态效果就跳过动画）。
-        var motionIn = pane.querySelector('#mar-motion-ignore');
-        if (motionIn) motionIn.checked = marMotionOverride();
+        // 动效总开关：开/关（不是"遵循系统"——跳过与否完全由它决定）。
+        var motionIn = pane.querySelector('#mar-motion');
+        if (motionIn) motionIn.checked = marMotionEnabled();
         var fromIn = pane.querySelector('#mar-dark-from');
         if (fromIn) {
           if (doc.activeElement !== fromIn) fromIn.value = BG_STATE.darkFrom;
@@ -3550,14 +3559,18 @@ var head =
         // 启动动画：只有一个开关。开关行天然是"亮"的（`.mar-set-switch` 在调暗
         // 名单之外），所以这里不写任何说明文字——用户 2026-10-17 要求删掉那句。
         var bootIn = pane.querySelector('#mar-boot');
-        if (bootIn) bootIn.checked = bootEnabled();
+        if (bootIn) {
+          bootIn.checked = bootEnabled();
+          // 动效关了就没有揭幕，启动那组两个开关一并禁掉，避免出现"开着却什么都不播"。
+          bootIn.disabled = marMotionBlocked();
+        }
         var bootFullIn = pane.querySelector('#mar-boot-full');
         if (bootFullIn) {
           bootFullIn.checked = bootFullscreenWanted();
           // 按需判断：壳没接 dshDesktopBootChrome.fullscreen（官方壳，或 DSH NEXT
           // 没打 next-desktop 补丁）时，这个开关点了也不会有反应 —— 直接禁用并
           // 在值里写明「不可用」，而不是留一个假开关。
-          bootFullIn.disabled = !bootEnabled() || !bootFullscreenAvailable();
+          bootFullIn.disabled = marMotionBlocked() || !bootEnabled() || !bootFullscreenAvailable();
         }
         if (BG_STATE.anim) pane.classList.remove('mar-anim-off');
         else pane.classList.add('mar-anim-off');
@@ -3574,7 +3587,7 @@ var head =
           followsys: BG_STATE.schemeMode === 'system' ? '开' : '关',
           sched: BG_STATE.schemeMode === 'schedule' ? '开' : '关',
           schednow: marEffectivePair() === 'dark' ? '深色' : '浅色',
-          motion: marMotionOverride() ? '忽略' : '遵循'
+          motion: marMotionEnabled() ? '开' : '关'
         };
         var outs = pane.querySelectorAll('.mar-val');
         for (var k = 0; k < outs.length; k++) {
@@ -3661,13 +3674,10 @@ var head =
         if (!bridge || typeof bridge.fullscreen !== 'function') return;
         try { bridge.fullscreen(!!on); } catch (e) {}
       }
-      // [fork-patch] 同 marDoneReduced：本 fork 默认无视系统「减少动态效果」，
-      // 让冷启动揭幕在本机关了 Windows 动画的情况下也照常播放。
-      // 恢复上游行为：localStorage.setItem('mar.motion.override', '0')。
+      // [fork-patch] 同 marDoneReduced：跳过与否只看设置里的动效开关，
+      // 不看系统「减少动态效果」（本机 Windows 的「动画效果」是关的）。
       function bootReduced() {
-        if (marMotionOverride()) return false;
-        return !!(typeof window !== 'undefined' && window.matchMedia &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        return marMotionBlocked();
       }
 
       function buildBoot() {
@@ -3810,14 +3820,11 @@ var head =
       var settingsKick = 0;      // rAF handle for the immediate settings sweep
       var settingsPokes = [];    // startup retries aimed at installing the observer
 
-      // [fork-patch] 同 marMotionOverride：本 fork 默认无视系统「减少动态效果」。
+      // [fork-patch] 同 marDoneReduced：跳过与否只看动效开关。
       // 这里除了设置页马赛克揭示，还养着背景点阵的 rAF 循环开关（bgStart 在
-      // reduced-motion 下只画一帧静态点阵，2026-10-28 实测），所以一并放宽。
-      // 恢复上游行为：localStorage.setItem('mar.motion.override', '0')。
+      // reduced-motion 下只画一帧静态点阵，2026-10-28 实测），所以一并归它管。
       function reducedMotion() {
-        if (marMotionOverride()) return false;
-        return !!(typeof window !== 'undefined' && window.matchMedia &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        return marMotionBlocked();
       }
 
       // Deterministic shuffle (mulberry32 + Fisher-Yates). The brief asked for
